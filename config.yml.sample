@@ -1,0 +1,4 @@
+# telegram configurations
+telegram:
+  channel: "@superthinking2u"
+  token: input_your_token

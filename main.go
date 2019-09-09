@@ -9,7 +9,17 @@ import (
 	"net/http"
 	"os"
 	"strings"
+
+	"github.com/jasonlvhit/gocron"
+	"gopkg.in/yaml.v2"
 )
+
+type config struct {
+	Telegram struct {
+		Channel string `yaml:"channel"`
+		Token   string `yaml:"token"`
+	} `yaml:"telegram"`
+}
 
 type contentURL struct {
 	Desktop struct {
@@ -29,23 +39,26 @@ type wikiContent struct {
 }
 
 type message struct {
-	chatID    string
-	text      string
-	parseMode string
+	ChatID    string
+	Text      string
+	ParseMode string
 }
 
 func getPageSummary(title string) (summary []byte, err error) {
-
 	const (
 		wikiAPI string = "https://en.wikipedia.org/api/rest_v1/"
 		psAPI   string = wikiAPI + "page/summary/"
 	)
 
 	url := psAPI + title
-	log.Printf("Wiki url: %s", url)
+	log.Printf("wikiURL: %s", url)
 	resp, err := http.Get(url)
 	if err != nil {
 		return nil, err
+	}
+
+	if resp.StatusCode == http.StatusNotFound {
+		return nil, fmt.Errorf("Status code:%d \t wikiAPI:%s \t title:%s", resp.StatusCode, url, title)
 	}
 
 	summary, err = ioutil.ReadAll(resp.Body)
@@ -55,25 +68,24 @@ func getPageSummary(title string) (summary []byte, err error) {
 	}
 
 	return summary, nil
-
 }
 
 func sendMsg(content wikiContent) error {
 
-	const (
-		tgAPI      string = "https://api.telegram.org/bot"
-		token      string = ""
-		baseURL    string = tgAPI + token
-		sendMsgAPI string = baseURL + "/sendMessage"
+	var (
+		tgAPI      = "https://api.telegram.org/bot"
+		Token      = globalConfig.Telegram.Token
+		baseURL    = tgAPI + Token
+		sendMsgAPI = baseURL + "/sendMessage"
 	)
 
 	var msg message
-	msg.chatID = "@superthinking2u"
-	msg.text = fmt.Sprintf("<b>%s</b>  %s", content.Title, content.ContentURL.Desktop.Page)
-	msg.parseMode = "HTML"
+	msg.ChatID = globalConfig.Telegram.Channel
+	msg.Text = fmt.Sprintf("<b>%s</b>  %s", content.Title, content.ContentURL.Desktop.Page)
+	msg.ParseMode = "HTML"
 
-	url := sendMsgAPI + "?chat_id=" + msg.chatID + "&text=" + msg.text + "&parse_mode=" + msg.parseMode
-	log.Printf("Telegram url:%s", url)
+	url := sendMsgAPI + "?chat_id=" + msg.ChatID + "&text=" + msg.Text + "&parse_mode=" + msg.ParseMode
+	// log.Printf("telegram URL:%s", url)
 	_, err := http.Get(url)
 	if err != nil {
 		return err
@@ -82,9 +94,27 @@ func sendMsg(content wikiContent) error {
 	return nil
 }
 
+func readFile(cfg *config) {
+	f, err := os.Open("config.yml")
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	decoder := yaml.NewDecoder(f)
+	err = decoder.Decode(cfg)
+	if err != nil {
+		log.Fatal(err)
+	}
+}
+
+var (
+	globalConfig config
+)
+
 func main() {
 
-	var titles []string
+	// Read config
+	readFile(&globalConfig)
 
 	// Get mental models
 	file, err := os.Open("mental-models.txt")
@@ -94,29 +124,41 @@ func main() {
 	defer file.Close()
 
 	scanner := bufio.NewScanner(file)
+	var titles []string
 	for scanner.Scan() {
 		titles = append(titles, strings.ToLower(scanner.Text()))
 	}
 
-	for _, title := range titles {
-		// Get summary
-		summary, err := getPageSummary(title)
-		if err != nil {
-			log.Println(err)
-		}
+	wikiChan := make(chan wikiContent)
+	go func() {
+		for _, title := range titles {
+			// Get summary
+			summary, err := getPageSummary(title)
+			if err != nil {
+				log.Println(err)
+				continue
+			}
 
-		// Generate wikiContent
-		var content wikiContent
-		err = json.Unmarshal(summary, &content)
-		if err != nil {
-			log.Println(err)
-		}
+			// Generate wikiContent
+			var content wikiContent
+			err = json.Unmarshal(summary, &content)
+			if err != nil {
+				log.Println(err)
+				continue
+			}
 
-		// Send to telegram
-		err = sendMsg(content)
+			wikiChan <- content
+
+		}
+	}()
+
+	// Send to telegram
+	gocron.Every(1).Day().At("08:00").Do(func() {
+		err := sendMsg(<-wikiChan)
 		if err != nil {
 			log.Println(err)
 		}
-	}
+	})
+	<-gocron.Start()
 
 }
