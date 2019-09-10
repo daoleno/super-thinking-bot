@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/jasonlvhit/gocron"
 	"gopkg.in/yaml.v2"
@@ -153,7 +154,9 @@ func main() {
 	}()
 
 	// Send to telegram
-	gocron.Every(1).Day().At("08:00").Do(func() {
+	loc, _ := time.LoadLocation("Asia/Shanghai")
+	gocron.Every(1).Day().At("08:00").Loc(loc).Do(func() {
+		log.Println("Sending to telegram at ", time.Now().In(loc))
 		err := sendMsg(<-wikiChan)
 		if err != nil {
 			log.Println(err)
