@@ -33,6 +33,7 @@ type contentURL struct {
 }
 
 type wikiContent struct {
+	SrcTitle    string
 	Title       string     `json:"title"`
 	Description string     `json:"description"`
 	ContentURL  contentURL `json:"content_urls"`
@@ -82,7 +83,7 @@ func sendMsg(content wikiContent) error {
 
 	var msg message
 	msg.ChatID = globalConfig.Telegram.Channel
-	msg.Text = fmt.Sprintf("<b>%s</b>  %s", content.Title, content.ContentURL.Desktop.Page)
+	msg.Text = fmt.Sprintf("<b>%s</b>  %s", content.SrcTitle, content.ContentURL.Desktop.Page)
 	msg.ParseMode = "HTML"
 
 	url := sendMsgAPI + "?chat_id=" + msg.ChatID + "&text=" + msg.Text + "&parse_mode=" + msg.ParseMode
@@ -142,6 +143,7 @@ func main() {
 
 			// Generate wikiContent
 			var content wikiContent
+			content.SrcTitle = title
 			err = json.Unmarshal(summary, &content)
 			if err != nil {
 				log.Println(err)
