@@ -3,6 +3,7 @@ package main
 import (
 	"bufio"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io/ioutil"
 	"log"
@@ -46,6 +47,10 @@ type message struct {
 	ParseMode string
 }
 
+var (
+	ErrNotFound = errors.New("Can not get content from wikipedia")
+)
+
 func getPageSummary(title string) (summary []byte, err error) {
 	const (
 		wikiAPI string = "https://en.wikipedia.org/api/rest_v1/"
@@ -60,7 +65,7 @@ func getPageSummary(title string) (summary []byte, err error) {
 	}
 
 	if resp.StatusCode == http.StatusNotFound {
-		return nil, fmt.Errorf("Status code:%d \t wikiAPI:%s \t title:%s", resp.StatusCode, url, title)
+		return nil, ErrNotFound
 	}
 
 	summary, err = ioutil.ReadAll(resp.Body)
@@ -132,17 +137,29 @@ func main() {
 	}
 
 	wikiChan := make(chan wikiContent)
+	const googleSearchURL = "https://www.google.com/search?q="
 	go func() {
+
 		for _, title := range titles {
+			var content wikiContent
+
 			// Get summary
 			summary, err := getPageSummary(title)
 			if err != nil {
+				if err == ErrNotFound {
+					content.SrcTitle = title
+					content.Title = title
+					content.Description = "No entry"
+					content.ContentURL.Desktop.Page = googleSearchURL + title
+
+					wikiChan <- content
+				}
+
 				log.Println(err)
 				continue
 			}
 
 			// Generate wikiContent
-			var content wikiContent
 			content.SrcTitle = title
 			err = json.Unmarshal(summary, &content)
 			if err != nil {
