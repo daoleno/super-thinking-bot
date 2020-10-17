@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"encoding/json"
 	"errors"
+	"flag"
 	"fmt"
 	"io/ioutil"
 	"log"
@@ -116,9 +117,11 @@ func readFile(cfg *config) {
 
 var (
 	globalConfig config
+	start        = flag.String("start", "", "start position in the mental-models")
 )
 
 func main() {
+	flag.Parse()
 
 	// Read config
 	readFile(&globalConfig)
@@ -131,8 +134,17 @@ func main() {
 	defer file.Close()
 
 	scanner := bufio.NewScanner(file)
-	var titles []string
+	var (
+		titles      []string
+		beginAppend bool
+	)
 	for scanner.Scan() {
+		if scanner.Text() == *start {
+			beginAppend = true
+		}
+		if !beginAppend {
+			continue
+		}
 		titles = append(titles, strings.ToLower(scanner.Text()))
 	}
 
@@ -150,7 +162,7 @@ func main() {
 					content.SrcTitle = title
 					content.Title = title
 					content.Description = "No entry"
-					content.ContentURL.Desktop.Page = googleSearchURL + title
+					content.ContentURL.Desktop.Page = googleSearchURL + strings.ReplaceAll(title, " ", "-")
 
 					wikiChan <- content
 				}
@@ -176,8 +188,7 @@ func main() {
 	loc, _ := time.LoadLocation("Asia/Shanghai")
 	gocron.Every(1).Day().At("08:00").Loc(loc).Do(func() {
 		log.Println("Sending to telegram at ", time.Now().In(loc))
-		err := sendMsg(<-wikiChan)
-		if err != nil {
+		if err := sendMsg(<-wikiChan); err != nil {
 			log.Println(err)
 		}
 	})
