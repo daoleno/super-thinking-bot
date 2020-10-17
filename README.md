@@ -10,14 +10,17 @@ Push one mental model a day to the [@superthinking2u](https://t.me/superthinking
 
 ## build
 
-```
-go build
+```sh
+go build .
+
+# For RaspberryPi
+GOOS=linux GOARCH=arm GOARM=7 go build .
 ```
 
 ## run
 
 ```
-./super-thinking-bot --start "INVERSE THINKING"
+./super-thinking-bot --start "FAT-TAILED DISTRIBUTIONS"
 ```
 
 ## License
